@@ -1,8 +1,13 @@
 import math
 import os
+from typing import List, Optional
 
 import cv2
 import numpy as np
+
+Contour = np.array
+
+slow_video = 0.5
 
 # load video
 video_path = os.path.join(os.getcwd(), "..", "videos", "videoplayback.mp4")
@@ -47,48 +52,55 @@ background = cv2.createBackgroundSubtractorKNN(
 )
 
 
-def find_likely_balls(contours) -> list:
-    """Find and return any contours from the given image which could be balls"""
-    balls = [contour for contour in contours if could_be_ball(contour)]
-    if len(balls) == 0:
-        return []
-    if len(balls) > 10:
-        # Too many balls - abort
-        return []
-    return balls
+def get_contour_center(contour) -> (int, int):
+    """Return the center of the contour"""
+    M = cv2.moments(contour)
+    if M["m00"] == 0:
+        return None
+    x = int(M["m10"] / M["m00"])
+    y = int(M["m01"] / M["m00"])
+    return x, y
 
 
 def could_be_ball(contour) -> bool:
     """Return whether we think this could be a squash ball, based on the contour"""
     x, y, w, h = cv2.boundingRect(contour)
     _, radius = cv2.minEnclosingCircle(contour)
-    width_ok = True  # 5 <= w <= 20
-    height_ok = True  # 5 <= h <= 20
+    # check aspect ratio
+    if not 0.9 < w // h < 1.15:
+        return False
+    # check size
+    width_ok = 5 <= w <= 20
+    height_ok = 5 <= h <= 20
     radius_ok = 2 <= radius <= 10
     return all([width_ok, height_ok, radius_ok])
 
 
-def guess_ball_from_potential_balls(potential_balls, most_likely_ball):
+def select_ball(potential_balls: List[Contour], last_ball: Optional[Contour] = None) -> Contour:
     """
     Guess which of the potential balls is the most likely to be the real ball
     if most_likely_ball is set we'd expect it to be close to it
     """
-    if most_likely_ball is not None:
-        return [b for b in potential_balls if distance_between(most_likely_ball, b) < 30]
-    return potential_balls
+    if last_ball is not None:
+        # in this case we expect it to be close to the last position
+        return [b for b in potential_balls if distance_between(last_ball, b) < 30]
+    else:
+        (x, y), _ = cv2.minEnclosingCircle(potential_balls[0])
+        # in this case we return the one furthest away from the others and players.
+        return [max(potential_balls, key=lambda b: cv2.contourArea(b))]
 
 
 def distance_between(contour1, contour2):
     (x1, y1), _ = cv2.minEnclosingCircle(contour1)
     (x2, y2), _ = cv2.minEnclosingCircle(contour2)
-    dist = math.hypot(x2 - x1, y2 - y1)
+    dist = math.hypot(x2 - x1, y2 - y1)  # this is the euclidean distance
     return dist
 
 
 # History for trail visualization
 history = []
 i = 0
-most_likely_ball = None
+last_ball = None
 
 while cap.isOpened():
     # load frame
@@ -109,7 +121,7 @@ while cap.isOpened():
     processed = dilated
 
     # skip some frames
-    if i < 25:
+    if i < 250:
         continue
 
     # find contours (https://stackoverflow.com/questions/8830619/difference-between-cv-retr-list-cv-retr-tree-cv-retr-external)
@@ -118,25 +130,26 @@ while cap.isOpened():
     # find the smallest blob (ball)
     ball_detected = False
     if contours:
-        # filter out noise and sort
+        # find players
         small_contours = [c for c in contours if 1 < cv2.contourArea(c) < 100]
         big_contours = [c for c in contours if cv2.contourArea(c) > 1000]
         for c in big_contours:
             cv2.drawContours(frame, [c], -1, (0, 0, 255), 4)
 
-    # use helper functions
-    potential_balls = find_likely_balls(contours)
-    guessed_balls = guess_ball_from_potential_balls(
-        potential_balls, most_likely_ball
-    )
-    if len(guessed_balls) == 1:
-        most_likely_ball = guessed_balls[0]
-        cv2.drawContours(frame, potential_balls, -1, (255, 0, 0), 2)
+        # find ball
+        potential_balls = [contour for contour in contours if could_be_ball(contour)]
+        ball = select_ball(
+            potential_balls, last_ball
+        )
+        last_ball = ball
+        (x, y), radius = cv2.minEnclosingCircle(ball)
+        cv2.circle(frame, (int(x), int(y)), int(radius) + 2, (0, 255, 0), 2)
 
-    cv2.imshow("Frame", frame)
-    cv2.imshow("After PreProcessing", processed)
-    if cv2.waitKey(1000 // int(fps)) & 0xFF == ord('q'):
-        break
+        # draw stuff
+        cv2.imshow("Frame", frame)
+        cv2.imshow("After PreProcessing", processed)
+        if cv2.waitKey(1000 // int(fps * slow_video)) & 0xFF == ord('q'):
+            break
 
     continue  # FIXME: remove
 
