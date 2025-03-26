@@ -10,10 +10,12 @@ def setup_kalman():
     # kalman filter with 4 dynamic parameters (x,y,dx,dy) and 2 measurement parameters (x,y)
     kalman = cv2.KalmanFilter(4, 2)
     # Transition matrix (defines system dynamics)
-    kalman.transitionMatrix = np.array([[1, 0, 1, 0],
-                                        [0, 1, 0, 1],
-                                        [0, 0, 1, 0],
-                                        [0, 0, 0, 1]], np.float32)
+    kalman.transitionMatrix = np.array([
+        [1, 0, 1, 0],
+        [0, 1, 0, 1],
+        [0, 0, 1, 0],
+        [0, 0, 0, 1]
+    ], np.float32)
     # Measurement matrix
     kalman.measurementMatrix = np.eye(2, 4, dtype=np.float32)
 
@@ -24,7 +26,7 @@ def setup_kalman():
     kalman.measurementNoiseCov = np.eye(2, dtype=np.float32) * 0.5
 
     # Initial state
-    kalman.statePre = np.array([[0], [0], [0], [0]], dtype=np.float32)
+    # kalman.statePre = np.array([[0], [0], [0], [0]], dtype=np.float32)
 
     return kalman
 
@@ -46,6 +48,10 @@ background = cv2.createBackgroundSubtractorKNN(
 )
 # initialize kalman filter
 kalman = setup_kalman()
+
+# ball movement variables
+measurement = np.array((2, 1), np.float32)
+predicted = np.zeros((2, 1), np.float32)
 
 while cap.isOpened():
     # load frame
@@ -74,16 +80,36 @@ while cap.isOpened():
     # find contours
     contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-    # kalman
+    # find the smallest blob (ball)
+    ball_detected = False
+    if contours:
+        area_sizes = [cv2.contourArea(c) for c in contours]
+        c = max(contours, key=cv2.contourArea)
+        area = cv2.contourArea(c)
+        if area > 5:  # Filter small noise
+            (x, y), radius = cv2.minEnclosingCircle(c)
+            measurement = np.array([[np.float32(x)], [np.float32(y)]])
+            kalman.correct(measurement)
+            ball_detected = True
+
+    # kalman - Predict next ball position
+    predicted = kalman.predict()
+    px, py = int(predicted[0]), int(predicted[1])
     # measurement = np.array([[x], [y]], dtype=np.float32)
     # kalman.correct(measurement)
     # prediction = kalman.predict()
 
-    # draw contours
+    # Draw prediction (blue) and measurement (green)
+    cv2.circle(frame, (px, py), 10, (255, 0, 0), 2)  # Predicted
+    if ball_detected:
+        cv2.circle(frame, (int(x), int(y)), int(radius), (0, 255, 0), 2)  # Measured
     cv2.drawContours(frame, contours, -1, (0, 255, 0), 3)
     cv2.imshow("Mask", mask)
     cv2.imshow("Thresh", thresh)
     cv2.imshow("Frame", frame)
+
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
 
 cap.release()
 cv2.destroyAllWindows()
