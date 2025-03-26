@@ -1,1 +1,1 @@
-from mediapipe
+from mediapipe import
