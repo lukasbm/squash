@@ -1,3 +1,4 @@
+import math
 import os
 
 import cv2
@@ -45,10 +46,49 @@ background = cv2.createBackgroundSubtractorKNN(
     history=200, dist2Threshold=200, detectShadows=False
 )
 
+
+def find_likely_balls(contours) -> list:
+    """Find and return any contours from the given image which could be balls"""
+    balls = [contour for contour in contours if could_be_ball(contour)]
+    if len(balls) == 0:
+        return []
+    if len(balls) > 10:
+        # Too many balls - abort
+        return []
+    return balls
+
+
+def could_be_ball(contour) -> bool:
+    """Return whether we think this could be a squash ball, based on the contour"""
+    x, y, w, h = cv2.boundingRect(contour)
+    _, radius = cv2.minEnclosingCircle(contour)
+    width_ok = True  # 5 <= w <= 20
+    height_ok = True  # 5 <= h <= 20
+    radius_ok = 2 <= radius <= 10
+    return all([width_ok, height_ok, radius_ok])
+
+
+def guess_ball_from_potential_balls(potential_balls, most_likely_ball):
+    """
+    Guess which of the potential balls is the most likely to be the real ball
+    if most_likely_ball is set we'd expect it to be close to it
+    """
+    if most_likely_ball is not None:
+        return [b for b in potential_balls if distance_between(most_likely_ball, b) < 30]
+    return potential_balls
+
+
+def distance_between(contour1, contour2):
+    (x1, y1), _ = cv2.minEnclosingCircle(contour1)
+    (x2, y2), _ = cv2.minEnclosingCircle(contour2)
+    dist = math.hypot(x2 - x1, y2 - y1)
+    return dist
+
+
 # History for trail visualization
 history = []
-
 i = 0
+most_likely_ball = None
 
 while cap.isOpened():
     # load frame
@@ -68,11 +108,12 @@ while cap.isOpened():
     dilated = cv2.dilate(erode, kernel, iterations=4)
     processed = dilated
 
-    if i < 2500:
+    # skip some frames
+    if i < 25:
         continue
 
-    # find contours
-    contours, _ = cv2.findContours(processed, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    # find contours (https://stackoverflow.com/questions/8830619/difference-between-cv-retr-list-cv-retr-tree-cv-retr-external)
+    contours, hierarchy = cv2.findContours(processed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     # find the smallest blob (ball)
     ball_detected = False
@@ -80,30 +121,24 @@ while cap.isOpened():
         # filter out noise and sort
         small_contours = [c for c in contours if 1 < cv2.contourArea(c) < 100]
         big_contours = [c for c in contours if cv2.contourArea(c) > 1000]
-
-        print(f"detected {len(small_contours)} ball sized contours in frame {i}")
-        print(f"detected {len(big_contours)} player sized contours in frame {i}")
-
         for c in big_contours:
             cv2.drawContours(frame, [c], -1, (0, 0, 255), 4)
-            # (x, y), radius = cv2.minEnclosingCircle(c)
-            # cv2.circle(frame, (int(x), int(y)), int(radius), (0, 255, 255), 2)
 
-        for c in small_contours:
-            (x, y), radius = cv2.minEnclosingCircle(c)
-            outside_of_player = [cv2.pointPolygonTest(player, (int(x), int(y)), False) for player in big_contours]
-            print(outside_of_player)
-            # if any(outside_of_player):
-            #     ball_detected = True
-            #     cv2.circle(frame, (int(x), int(y)), int(radius), (0, 255, 255), 2)
-            #     break
+    # use helper functions
+    potential_balls = find_likely_balls(contours)
+    guessed_balls = guess_ball_from_potential_balls(
+        potential_balls, most_likely_ball
+    )
+    if len(guessed_balls) == 1:
+        most_likely_ball = guessed_balls[0]
+        cv2.drawContours(frame, potential_balls, -1, (255, 0, 0), 2)
 
     cv2.imshow("Frame", frame)
     cv2.imshow("After PreProcessing", processed)
     if cv2.waitKey(1000 // int(fps)) & 0xFF == ord('q'):
         break
-    # FIXME: remove
-    continue
+
+    continue  # FIXME: remove
 
     # predict position regardless of detection
     prediction = kalman.predict()
