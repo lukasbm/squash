@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.config.JvmTarget
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -28,18 +30,23 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
     }
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = JvmTarget.JVM_1_8.toString()
     }
     buildFeatures {
         compose = true
+        viewBinding = true
     }
 }
-
 dependencies {
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.compose)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.accompanist.permissions)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
