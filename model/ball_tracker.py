@@ -59,7 +59,7 @@ def select_ball(potential_balls: List[Contour], players: List[Contour],
         return None
     if last_ball is not None:
         # in this case we expect it to be close to the last position
-        return max(potential_balls, key=lambda b: distance_between_contours(last_ball[0], b))
+        return min(potential_balls, key=lambda b: distance_between_contours(last_ball[0], b))
     else:
         # in this case we return the one furthest away from the others.
         return max(potential_balls, key=lambda b: min(distance_between_contours(b, p) for p in players))
