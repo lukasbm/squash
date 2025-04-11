@@ -65,7 +65,6 @@ fun CameraPreviewScreen(
     if (cameraPermissionState.status.isGranted) {
         CameraPreviewContent(viewModel, modifier)
     } else {
-
         Column(
             modifier = modifier.fillMaxSize().wrapContentSize().widthIn(max = 480.dp),
             horizontalAlignment = Alignment.CenterHorizontally

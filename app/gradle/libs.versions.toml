@@ -8,7 +8,7 @@ espressoCore = "3.5.1"
 lifecycleRuntimeKtx = "2.6.1"
 activityCompose = "1.8.0"
 composeBom = "2024.09.00"
-camerax = "1.5.0-alpha03"
+cameraX = "1.4.0"
 accompanist = "0.36.0" # or whatever matches with your Compose version
 
 [libraries]
@@ -27,15 +27,14 @@ androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-man
 androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
 
-# Contains the basic camera functionality such as SurfaceRequest
-androidx-camera-core = { module = "androidx.camera:camera-core", version.ref = "camerax" }
-# Contains the CameraXViewfinder composable
-androidx-camera-compose = { module = "androidx.camera:camera-compose", version.ref = "camerax" }
-# Allows us to bind the camera preview to our UI lifecycle
-androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
-# The specific camera implementation that renders the preview
-androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
-# The helper library to grant the camera permission
+
+androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "cameraX" }
+androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "cameraX" }
+androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "cameraX" }
+androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "cameraX" }
+androidx-camera-video = { group = "androidx.camera", name = "camera-video", version.ref = "cameraX" }
+androidx-camera-extensions = { group = "androidx.camera", name = "camera-extensions", version.ref = "cameraX" }
+
 accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "accompanist" }
 
 [plugins]
