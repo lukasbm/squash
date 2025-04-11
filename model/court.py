@@ -37,22 +37,19 @@ def get_court_lines(image):
 
     # make the lines thinner
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=4)
-
-    # Use Canny edge detection to find edges in the mask.
-    edges = cv2.Canny(mask, 50, 150, apertureSize=3)
+    mask_clean = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=4)
 
     # Apply Hough Line Transform to detect lines from the edges.
     # Here we use the probabilistic Hough Transform which directly returns endpoints.
-    lines = cv2.HoughLinesP(edges,
+    lines = cv2.HoughLinesP(mask_clean,
                             rho=1,
                             theta=np.pi / 180,
-                            threshold=50,
+                            threshold=30,
                             minLineLength=50,
                             maxLineGap=10)
     # lines = cv2.HoughLines(edges, 1, np.pi / 180, 100)
 
-    return lines, mask, edges
+    return lines, mask_clean
 
 if __name__ == "__main__":
     # Step 1: Load the image
@@ -64,7 +61,7 @@ if __name__ == "__main__":
     image = cv2.resize(image, (0, 0), fx=0.5, fy=0.5)
 
     # Call the function to get court lines
-    lines, mask_clean, edges = get_court_lines(image)
+    lines, mask_clean = get_court_lines(image)
     output_image = image.copy()
 
     # Display the results
@@ -76,7 +73,6 @@ if __name__ == "__main__":
         print("No red lines were detected.")
     # cv2.imshow("Original Image", image)
     cv2.imshow("Red Mask", mask_clean)
-    cv2.imshow("Edges", edges)
     cv2.imshow("Detected Lines", output_image)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
