@@ -35,21 +35,19 @@ def get_court_lines(image):
     # Combine the masks to capture the full red range
     mask = cv2.bitwise_or(mask1, mask2)
 
-    # make the lines thinner
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    mask_clean = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=4)
+    # grow the lines
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    mask_clean = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
 
     # Apply Hough Line Transform to detect lines from the edges.
     # Here we use the probabilistic Hough Transform which directly returns endpoints.
-    lines = cv2.HoughLinesP(mask_clean,
-                            rho=1,
-                            theta=np.pi / 180,
-                            threshold=30,
-                            minLineLength=50,
-                            maxLineGap=10)
-    # lines = cv2.HoughLines(edges, 1, np.pi / 180, 100)
+    lines = cv2.HoughLines(mask_clean,
+                           rho=1,
+                           theta=np.pi / 90,
+                           threshold=125)
 
     return lines, mask_clean
+
 
 if __name__ == "__main__":
     # Step 1: Load the image
@@ -58,7 +56,7 @@ if __name__ == "__main__":
         raise ValueError("Image not found. Check the file path.")
 
     # scale down
-    image = cv2.resize(image, (0, 0), fx=0.5, fy=0.5)
+    image = cv2.resize(image, (0, 0), fx=0.4, fy=0.4)
 
     # Call the function to get court lines
     lines, mask_clean = get_court_lines(image)
@@ -66,8 +64,18 @@ if __name__ == "__main__":
 
     # Display the results
     if lines is not None:
+        print(f"Detected {len(lines)} lines.")
         for line in lines:
-            x1, y1, x2, y2 = line[0]
+            rho, theta = line[0]
+            a = np.cos(theta)
+            b = np.sin(theta)
+            x0 = a * rho
+            y0 = b * rho
+            x1 = int(x0 + 1000 * (-b))
+            y1 = int(y0 + 1000 * (a))
+            x2 = int(x0 - 1000 * (-b))
+            y2 = int(y0 - 1000 * (a))
+
             cv2.line(output_image, (x1, y1), (x2, y2), (0, 255, 0), 2)  # Drawing in green.
     else:
         print("No red lines were detected.")
