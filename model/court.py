@@ -3,43 +3,59 @@ import os
 import cv2
 import numpy as np
 
+
 # https://www.worldsquash.org/wp-content/uploads/2021/08/171128_Court-Specifications.pdf
 # Dimensions of an International Doubles Squash Court
-reference_court_points = {
+class Court:
     # (horizontal, vertical, height) toward back wall is positive. right is positive.
-    # marking line corners
-    "T": (0, 0, 0),  # half court line meets short line
-    "short line left wall": (-3810, 0, 0),  # short line meets left wall
-    "short line right wall": (3810, 0, 0),  # short line meets right wall
-    "short line left box": (-2185, 0, 0),  # left box meets short line
-    "short line right box": (2185, 0, 0),  # right box meets short line
-    "center door": (0, -4285, 0),  # start of half court line
-    "left box corner": (-2185, -1650, 0),  # inside corner left box
-    "right box corner": (2185, -1650, 0),  # inside corner right box
-    "left box wall": (-3810, -1650, 0),  # left box wall
-    "right box wall": (3810, -1650, 0),  # right box wall
-    # just the corners of the court
-    "front left": (-3810, 5465, 0),  # front left corner
-    "front right": (3810, 5465, 0),  # front right corner
-    "back left": (-3810, -4285, 0),  # back left corner
-    "back right": (3810, -4285, 0),  # back right corner
-    # front wall (back) marking line points
-    "tin left": (-3810, 5465, 455),  # left wall meets tin
-    "tin right": (3810, 5465, 455),  # right wall meets tin
-    "service left": (-3810, 5465, 1805),  # left wall meets service line
-    "service right": (3810, 5465, 1805),  # right wall meets service line
-    "front wall left": (-3810, 5465, 4595),  # left wall meets front wall line
-    "front wall right": (3810, 5465, 4595),  # right wall meets front wall line
-    # front wall (door) marking line points
-    "back wall left": (-3810, -4285, 2155),  # left wall meets back wall line
-    "back wall right": (3810, -4285, 2155),  # right wall meets back wall line
-    # left wall marking line points
-    "left wall top": (-3810, 5465, 4595),  # left wall meets front wall line
-    "left wall bottom": (-3810, -4285, 2155),  # left wall meets back wall line
-    # right wall marking line points
-    "right wall top": (3810, 5465, 4595),  # right wall meets front wall line
-    "right wall bottom": (3810, -4285, 2155),  # right wall meets back wall line
-}
+    REFERENCE_POINTS = {
+        # marking line corners
+        "T": (0, 0, 0),  # half court line meets short line
+        "short line left wall": (-3810, 0, 0),  # short line meets left wall
+        "short line right wall": (3810, 0, 0),  # short line meets right wall
+        "short line left box": (-2185, 0, 0),  # left box meets short line
+        "short line right box": (2185, 0, 0),  # right box meets short line
+        "center door": (0, -4285, 0),  # start of half court line
+        "left box corner": (-2185, -1650, 0),  # inside corner left box
+        "right box corner": (2185, -1650, 0),  # inside corner right box
+        "left box wall": (-3810, -1650, 0),  # left box wall
+        "right box wall": (3810, -1650, 0),  # right box wall
+        # just the corners of the court
+        "front left": (-3810, 5465, 0),  # front left corner
+        "front right": (3810, 5465, 0),  # front right corner
+        "back left": (-3810, -4285, 0),  # back left corner
+        "back right": (3810, -4285, 0),  # back right corner
+        # front wall (back) marking line points
+        "tin left": (-3810, 5465, 455),  # left wall meets tin
+        "tin right": (3810, 5465, 455),  # right wall meets tin
+        "service left": (-3810, 5465, 1805),  # left wall meets service line
+        "service right": (3810, 5465, 1805),  # right wall meets service line
+        "front wall left": (-3810, 5465, 4595),  # left wall meets front wall line
+        "front wall right": (3810, 5465, 4595),  # right wall meets front wall line
+        # back wall (door) marking line points
+        "back wall left": (-3810, -4285, 2155),  # left wall meets back wall line
+        "back wall right": (3810, -4285, 2155),  # right wall meets back wall line
+        # left wall marking line points
+        "left wall top": (-3810, 5465, 4595),  # left wall meets front wall line
+        "left wall bottom": (-3810, -4285, 2155),  # left wall meets back wall line
+        # right wall marking line points
+        "right wall top": (3810, 5465, 4595),  # right wall meets front wall line
+        "right wall bottom": (3810, -4285, 2155),  # right wall meets back wall line
+    }
+
+    def __init__(self, corners_pixel_space):
+        # FIXME: need to match corners_pixel_space to proper key!!!
+        H, status = cv2.findHomography(corners_pixel_space, self.REFERENCE_POINTS.values())
+        self.H = H
+
+    def pixel_to_world(self, u, v):
+        # convert pixel coordinates to world coordinates
+        # NOTE: only works for objects on the floor, e.g. shoes
+        pixel_point = np.array([[u], [v], [1]])
+        world_point_homogeneous = np.dot(self.H, pixel_point)
+        # normalize to convert from homogenous to cartesian coordinates
+        world_point = world_point_homogeneous / world_point_homogeneous[2]
+        return world_point[0:2].flatten()  # return (x, y) coordinates
 
 
 def calibrate_camera(image):
@@ -116,6 +132,27 @@ if __name__ == "__main__":
     if image is None:
         raise ValueError("Image not found. Check the file path.")
 
+    # just testing with manual determination of points (only frame.png)
+    pixel_space_points_image = {
+        # marking line corners
+        "T": (416, 350),  # half court line meets short line
+        "short line left wall": (90, 358),  # short line meets left wall
+        "short line right wall": (720, 340),  # short line meets right wall
+        "short line left box": (257, 354),  # left box meets short line
+        "short line right box": (570, 344),  # right box meets short line
+        "left box corner": (170, 476),  # inside corner left box
+        "right box corner": (639, 454),  # inside corner right box
+        "right box wall": (860, 445),  # right box wall
+        # just the corners of the court
+        "front left": (270, 231),  # front left corner
+        "front right": (569, 228),  # front right corner
+        # front wall (back) marking line points
+        "tin left": (269, 212),  # left wall meets tin
+        "tin right": (569, 209),  # right wall meets tin
+        "service left": (262, 145),  # left wall meets service line
+        "service right": (573, 144),  # right wall meets service line
+    }
+
     # scale down
     image = cv2.resize(image, (0, 0), fx=0.4, fy=0.4)
 
@@ -135,7 +172,7 @@ if __name__ == "__main__":
         x2 = int(x0 - 1000 * (-b))
         y2 = int(y0 - 1000 * (a))
 
-        cv2.line(output_image, (x1, y1), (x2, y2), (0, 255, 0), 2)  # Drawing in green.
+        # cv2.line(output_image, (x1, y1), (x2, y2), (0, 255, 0), 2)  # Drawing in green.
 
     # get court corners
     # corners =
