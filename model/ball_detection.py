@@ -49,7 +49,8 @@ def preprocessing(frame1, frame2, frame3):
 
     # apply morphological operations
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    processed = cv2.morphologyEx(thresholded, cv2.MORPH_CLOSE, kernel, iterations=10)  # TODO: play with iterations
+    processed = cv2.morphologyEx(thresholded, cv2.MORPH_CLOSE, kernel, iterations=10)
+    processed = cv2.morphologyEx(processed, cv2.MORPH_DILATE, kernel, iterations=5)
 
     return processed
 
@@ -78,14 +79,22 @@ while cap.isOpened():
 
     # find the smallest blob (ball)
     if contours:
+        contours = sorted(contours, key=cv2.contourArea, reverse=False)
+
+        contour_sizes = [(cv2.contourArea(c), c) for c in contours]
+        contour_sizes = filter(lambda x: x[0] > 1, contour_sizes)
+        # plot as hist
+        plt.hist([size for size, _ in contour_sizes], bins=50)
+
         print(f"Contours found: {len(contours)}")
-        cv2.drawContours(frame, contours, -1, (0, 0, 255), 2)
+        cv2.drawContours(frame, contours[:2], -1, (0, 0, 255), 2)
     else:
         print("No contours found")
 
     # draw stuff
     cv2.imshow("Frame", frame)
     cv2.imshow("After PreProcessing", processed)
+    # plt.show()
     if cv2.waitKey(1000 // int(fps)) & 0xFF == ord('q'):
         break
     if cv2.waitKey(1) & 0xFF == ord('n'):  # skip frames manually
