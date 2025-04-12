@@ -1,7 +1,7 @@
 import math
 import os
 from typing import List, Optional
-
+from matplotlib import pyplot as plt
 import cv2
 import numpy as np
 
@@ -66,16 +66,26 @@ while cap.isOpened():
     # assign
     frame_pp = frame_p
     frame_p = frame_c
-    frame_c = frame
+    frame_c = frame.copy()
     if i < 3:
         continue
 
     # preprocess
-    img = preprocessing(frame_pp, frame_p, frame_c)
+    processed = preprocessing(frame_pp, frame_p, frame_c)
+
+    # find contours (https://stackoverflow.com/questions/8830619/difference-between-cv-retr-list-cv-retr-tree-cv-retr-external)
+    contours, hierarchy = cv2.findContours(processed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # find the smallest blob (ball)
+    if contours:
+        print(f"Contours found: {len(contours)}")
+        cv2.drawContours(frame, contours, -1, (0, 0, 255), 2)
+    else:
+        print("No contours found")
 
     # draw stuff
     cv2.imshow("Frame", frame)
-    cv2.imshow("After PreProcessing", img)
+    cv2.imshow("After PreProcessing", processed)
     if cv2.waitKey(1000 // int(fps)) & 0xFF == ord('q'):
         break
     if cv2.waitKey(1) & 0xFF == ord('n'):  # skip frames manually
