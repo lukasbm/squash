@@ -1,9 +1,11 @@
 import math
 import os
-from typing import List, Optional
-from matplotlib import pyplot as plt
+from dataclasses import dataclass
+from typing import List, Tuple
+
 import cv2
 import numpy as np
+from matplotlib import pyplot as plt
 
 # load video
 video_path = os.path.join(os.getcwd(), "..", "videos", "videoplayback.mp4")
@@ -55,27 +57,126 @@ def preprocessing(frame1, frame2, frame3):
     return processed
 
 
-def get_distance_to_last_contour(contours_current, last_contour):
+def contour_center(contour) -> (int, int):
+    """Return the center of the contour"""
+    M = cv2.moments(contour)
+    if M["m00"] == 0:
+        return None
+    x = int(M["m10"] / M["m00"])
+    y = int(M["m01"] / M["m00"])
+    return x, y
+
+
+@dataclass
+class Blob:
+    contour: np.ndarray
+    area: float  # in pixel coordinates
+    center: (float, float)  # in pixel coordinates
+    radius: float
+
+    def __init__(self, cnt):
+        self.contour = cnt
+        self.area = cv2.contourArea(cnt)
+        # self.center = contour_center(cnt)
+        self.center, self.radius = cv2.minEnclosingCircle(cnt)
+
+    def dist_to(self, other):
+        return math.sqrt((self.center[0] - other.center[0]) ** 2 + (self.center[1] - other.center[1]) ** 2)
+
+
+# from sachdeva 2019
+def detection_candidates_from_size(blobs: List[Blob], min_ball_area=1, max_ball_area=200, min_player_area=400) -> Tuple[
+    List[Blob], List[Blob], List[Blob]]:
     """
-    :param contours_p: contours of previous frame
-    :param contours_c: contours of current frame
-    :return: the minimum movement can match contours.
+    :param blobs: list of contours
+    :param min_ball_area: minimum area of the ball
+    :param min_player_area: minimum area of the player
+    :param max_ball_area: maximum area of the ball
+    :return: [[ball_candidates], [player_candidates], [incomplete_player_candidates]]
     """
-    # find the closest contour
-    movements = {}
-    for c_c in contours_c:
-        c_c_center = cv2.minEnclosingCircle(c_c)[0]
-        best_idx = -1
-        best_val = 80000000000000000
-        for i_c_p, c_p in enumerate(contours_p):
-            c_p_center = cv2.minEnclosingCircle(c_p)[0]
-            dist = math.sqrt((c_c_center[0] - c_p_center[0]) ** 2 + (c_c_center[1] - c_p_center[1]) ** 2)
-            if dist < best_val:
-                best_val = dist
-                best_idx = i_c_p
-        movements[c_c] = contours_p[best_idx]
-        contours_p.pop(best_idx)
-    return movements
+    ball_candidates = []
+    player_candidates = []
+    incomplete_player_candidates = []
+    for c in blobs:
+        if c.area > min_player_area:
+            player_candidates.append(c)
+        elif c.area < min_player_area and c.area > max_ball_area:
+            incomplete_player_candidates.append(c)
+        elif c.area < max_ball_area and c.area > min_ball_area:
+            ball_candidates.append(c)
+
+    return ball_candidates, player_candidates, incomplete_player_candidates
+
+
+# from sachdeva 2019
+def detection_ball_candidates_from_player_proximity(ball_candidates: List[Blob], player_candidates: List[Blob],
+                                                    incomplete_player_candidates: List[Blob],
+                                                    min_ball_distance: int = 20) -> List[Blob]:
+    """
+    :param min_ball_distance: minimum distance between ball and player
+    :param incomplete_player_candidates: list of incomplete player candidates
+    :param ball_candidates: list of ball candidates
+    :param player_candidates: list of player candidates
+    :return: ball candidates filtered
+    """
+    ball_candidates_filtered = []
+    if len(ball_candidates) == 0:
+        return ball_candidates_filtered
+
+    min_dist = 8000000  # large number
+
+    for c in ball_candidates:
+        if len(player_candidates) > 1:
+            for p in player_candidates:
+                dist = c.dist_to(p)
+                if dist < min_dist:
+                    min_dist = dist
+        elif len(player_candidates) == 1:
+            p = player_candidates[0]
+            dist = c.dist_to(p)
+            if dist < min_dist:
+                min_dist = dist
+            for pp in incomplete_player_candidates:
+                dist = c.dist_to(pp)
+                if dist < min_dist:
+                    min_dist = dist
+        elif len(incomplete_player_candidates) > 1:
+            for pp in incomplete_player_candidates:
+                dist = c.dist_to(pp)
+                if dist < min_dist:
+                    min_dist = dist
+
+        if min_dist > min_ball_distance:
+            ball_candidates_filtered.append(c)
+
+    return ball_candidates_filtered
+
+
+# from sachdeva 2019
+def detect_ball_candidates_from_motion(ball_candidates: List[Blob], ball_candidates_previous: List[Blob],
+                                       min_motion_distance=0.01, max_motion_distance=100) -> List[Blob]:
+    """
+    :param ball_candidates:
+    :param ball_candidates_previous:
+    :param min_motion_distance:
+    :param max_motion_distance:
+    :return: filtered ball candidates
+    """
+    ball_candidates_filtered = []
+    if len(ball_candidates) == 0:
+        return ball_candidates_filtered
+    if len(ball_candidates_previous) == 0:
+        return ball_candidates
+    for c in ball_candidates:
+        flag = False
+        for pc in ball_candidates_previous:
+            dist = c.dist_to(pc)
+            if min_motion_distance < dist < max_motion_distance:
+                flag = True
+                break
+        if flag:
+            ball_candidates_filtered.append(c)
+    return ball_candidates_filtered
 
 
 i = 0
@@ -103,21 +204,15 @@ while cap.isOpened():
 
     # find the smallest blob (ball)
     if contours:
-        contours = sorted(contours, key=cv2.contourArea, reverse=False)
+        blobs = [Blob(c) for c in contours]
 
-        ball_candidates_prev = ball_candidates_prev or []
-        ball_candidates = [c for c in contours if 1 < cv2.contourArea(c) < 100]
-
-        matches = match_contours(ball_candidates_prev, ball_candidates)
-
-        contour_sizes = [(cv2.contourArea(c), c) for c in contours]
-        contour_sizes = filter(lambda x: x[0] > 1, contour_sizes)
-        # plot as hist
-        plt.hist([size for size, _ in contour_sizes], bins=50)
+        ball_candidates, player_candidates, incomplete_player_candidates = detection_candidates_from_size(blobs)
+        ball_candidates = detection_ball_candidates_from_player_proximity(ball_candidates, player_candidates,
+                                                                          incomplete_player_candidates)
+        ball_candidates = detect_ball_candidates_from_motion(ball_candidates, ball_candidates_prev)
 
         print(f"Contours found: {len(contours)}")
-        cv2.drawContours(frame, ball_candidates, -1, (0, 0, 255), 1)
-        cv2.drawContours(frame, a, -1, (0, 255, 0), 2)
+        cv2.drawContours(frame, list(map(lambda x: x.contour, ball_candidates)), -1, (0, 0, 255), 1)
 
     else:
         print("No contours found")
@@ -125,7 +220,6 @@ while cap.isOpened():
     # draw stuff
     cv2.imshow("Frame", frame)
     cv2.imshow("After PreProcessing", processed)
-    plt.show()
     if cv2.waitKey(1000 // int(fps)) & 0xFF == ord('q'):
         break
     if cv2.waitKey(1) & 0xFF == ord('n'):  # skip frames manually
