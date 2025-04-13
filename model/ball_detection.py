@@ -147,8 +147,8 @@ def detection_ball_candidates_from_player_proximity(ball_candidates: List[Blob],
 
 
 # from sachdeva 2019
-def detect_ball_candidates_from_motion(ball_candidates: List[Blob], ball_candidates_previous: List[Blob],
-                                       min_motion_distance=10, max_motion_distance=100) -> List[Blob]:
+def detection_ball_candidates_from_motion(ball_candidates: List[Blob], ball_candidates_previous: List[Blob],
+                                          min_motion_distance=10, max_motion_distance=100) -> List[Blob]:
     """
     :param ball_candidates:
     :param ball_candidates_previous:
@@ -202,20 +202,25 @@ while cap.isOpened():
 
     # find the smallest blob (ball)
     if contours:
+        print(f"Contours found: {len(contours)}")
+
+        # convert to blobs
         blobs = [Blob(c) for c in contours]
+
         # get ball and player candidates
         ball_candidates_size, player_candidates, incomplete_player_candidates = detection_candidates_from_size(blobs)
         ball_candidates_proxmity = detection_ball_candidates_from_player_proximity(ball_candidates_size,
                                                                                    player_candidates,
                                                                                    incomplete_player_candidates)
-        ball_candidates_motion = detect_ball_candidates_from_motion(ball_candidates_proxmity, ball_candidates_prev)
+        ball_candidates_motion = detection_ball_candidates_from_motion(ball_candidates_proxmity, ball_candidates_prev)
         # update previous ball candidates
         ball_candidates_prev = ball_candidates_motion
-
-        print(f"Contours found: {len(contours)}")
-        # cv2.drawContours(frame, list(map(lambda x: x.contour, ball_candidates_size)), -1, (0, 0, 255), 1)
-        # cv2.drawContours(frame, list(map(lambda x: x.contour, ball_candidates_proxmity)), -1, (0, 255, 0), 3)
+        # visualize candidates
         cv2.drawContours(frame, list(map(lambda x: x.contour, ball_candidates_motion)), -1, (255, 0, 0), 5)
+
+        # player tracking narrows it down to a single player candidate
+
+
 
     else:
         print("No contours found")
