@@ -8,7 +8,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 # load video
-video_path = os.path.join(os.getcwd(), "..", "videos", "videoplayback.mp4")
+video_path = os.path.join(os.getcwd(), "..", "videos", "casse_lukas_1_cut.mp4")
 cap = cv2.VideoCapture(video_path)
 if not cap.isOpened():
     raise Exception(f"Error opening video stream or file: {video_path}")
@@ -22,11 +22,6 @@ def preprocessing(frame1, frame2, frame3):
     # frame 3 is the current frame
     # frame 2 is the previous frame
     # frame 1 is the frame before the previous frame
-
-    # size
-    frame1 = cv2.resize(frame1, size)
-    frame2 = cv2.resize(frame2, size)
-    frame3 = cv2.resize(frame3, size)
 
     # convert to grayscale
     gray1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
@@ -47,12 +42,11 @@ def preprocessing(frame1, frame2, frame3):
     combined = cv2.bitwise_and(diff1, diff2)
 
     # apply otsu thresholding
-    _, threshold = cv2.threshold(combined, 0, 255, cv2.THRESH_OTSU)
+    _, threshold = cv2.threshold(combined, 10, 255, cv2.THRESH_OTSU)
 
     # apply morphological operations
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-    processed = cv2.morphologyEx(threshold, cv2.MORPH_CLOSE, kernel, iterations=5)
-    processed = cv2.morphologyEx(processed, cv2.MORPH_DILATE, kernel, iterations=2)
+    processed = cv2.morphologyEx(threshold, cv2.MORPH_CLOSE, kernel, iterations=8)
 
     return processed
 
@@ -85,8 +79,8 @@ class Blob:
 
 
 # from sachdeva 2019
-def detection_candidates_from_size(blobs: List[Blob], min_ball_area=1, max_ball_area=200, min_player_area=400) -> Tuple[
-    List[Blob], List[Blob], List[Blob]]:
+def detection_candidates_from_size(blobs: List[Blob], min_ball_area=1, max_ball_area=100, min_player_area=500) -> \
+        Tuple[List[Blob], List[Blob], List[Blob]]:
     """
     :param blobs: list of contours
     :param min_ball_area: minimum area of the ball
@@ -100,9 +94,9 @@ def detection_candidates_from_size(blobs: List[Blob], min_ball_area=1, max_ball_
     for c in blobs:
         if c.area > min_player_area:
             player_candidates.append(c)
-        elif c.area < min_player_area and c.area > max_ball_area:
+        elif min_player_area > c.area > max_ball_area:
             incomplete_player_candidates.append(c)
-        elif c.area < max_ball_area and c.area > min_ball_area:
+        elif max_ball_area > c.area > min_ball_area:
             ball_candidates.append(c)
 
     return ball_candidates, player_candidates, incomplete_player_candidates
@@ -111,7 +105,7 @@ def detection_candidates_from_size(blobs: List[Blob], min_ball_area=1, max_ball_
 # from sachdeva 2019
 def detection_ball_candidates_from_player_proximity(ball_candidates: List[Blob], player_candidates: List[Blob],
                                                     incomplete_player_candidates: List[Blob],
-                                                    min_ball_distance: int = 20) -> List[Blob]:
+                                                    min_ball_distance: int = 50) -> List[Blob]:
     """
     :param min_ball_distance: minimum distance between ball and player
     :param incomplete_player_candidates: list of incomplete player candidates
@@ -154,7 +148,7 @@ def detection_ball_candidates_from_player_proximity(ball_candidates: List[Blob],
 
 # from sachdeva 2019
 def detect_ball_candidates_from_motion(ball_candidates: List[Blob], ball_candidates_previous: List[Blob],
-                                       min_motion_distance=0.01, max_motion_distance=100) -> List[Blob]:
+                                       min_motion_distance=10, max_motion_distance=100) -> List[Blob]:
     """
     :param ball_candidates:
     :param ball_candidates_previous:
@@ -189,6 +183,10 @@ while cap.isOpened():
     if not ret:
         break
     i += 1
+
+    # fix size
+    frame = cv2.resize(frame, size)
+
     # assign
     frame_pp = frame_p
     frame_p = frame_c
@@ -205,14 +203,19 @@ while cap.isOpened():
     # find the smallest blob (ball)
     if contours:
         blobs = [Blob(c) for c in contours]
-
-        ball_candidates, player_candidates, incomplete_player_candidates = detection_candidates_from_size(blobs)
-        ball_candidates = detection_ball_candidates_from_player_proximity(ball_candidates, player_candidates,
-                                                                          incomplete_player_candidates)
-        ball_candidates = detect_ball_candidates_from_motion(ball_candidates, ball_candidates_prev)
+        # get ball and player candidates
+        ball_candidates_size, player_candidates, incomplete_player_candidates = detection_candidates_from_size(blobs)
+        ball_candidates_proxmity = detection_ball_candidates_from_player_proximity(ball_candidates_size,
+                                                                                   player_candidates,
+                                                                                   incomplete_player_candidates)
+        ball_candidates_motion = detect_ball_candidates_from_motion(ball_candidates_proxmity, ball_candidates_prev)
+        # update previous ball candidates
+        ball_candidates_prev = ball_candidates_motion
 
         print(f"Contours found: {len(contours)}")
-        cv2.drawContours(frame, list(map(lambda x: x.contour, ball_candidates)), -1, (0, 0, 255), 1)
+        # cv2.drawContours(frame, list(map(lambda x: x.contour, ball_candidates_size)), -1, (0, 0, 255), 1)
+        # cv2.drawContours(frame, list(map(lambda x: x.contour, ball_candidates_proxmity)), -1, (0, 255, 0), 3)
+        cv2.drawContours(frame, list(map(lambda x: x.contour, ball_candidates_motion)), -1, (255, 0, 0), 5)
 
     else:
         print("No contours found")
