@@ -45,18 +45,42 @@ def preprocessing(frame1, frame2, frame3):
     combined = cv2.bitwise_and(diff1, diff2)
 
     # apply otsu thresholding
-    _, thresholded = cv2.threshold(combined, 0, 255, cv2.THRESH_OTSU)
+    _, threshold = cv2.threshold(combined, 0, 255, cv2.THRESH_OTSU)
 
     # apply morphological operations
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    processed = cv2.morphologyEx(thresholded, cv2.MORPH_CLOSE, kernel, iterations=10)
-    processed = cv2.morphologyEx(processed, cv2.MORPH_DILATE, kernel, iterations=5)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+    processed = cv2.morphologyEx(threshold, cv2.MORPH_CLOSE, kernel, iterations=5)
+    processed = cv2.morphologyEx(processed, cv2.MORPH_DILATE, kernel, iterations=2)
 
     return processed
 
 
+def get_distance_to_last_contour(contours_current, last_contour):
+    """
+    :param contours_p: contours of previous frame
+    :param contours_c: contours of current frame
+    :return: the minimum movement can match contours.
+    """
+    # find the closest contour
+    movements = {}
+    for c_c in contours_c:
+        c_c_center = cv2.minEnclosingCircle(c_c)[0]
+        best_idx = -1
+        best_val = 80000000000000000
+        for i_c_p, c_p in enumerate(contours_p):
+            c_p_center = cv2.minEnclosingCircle(c_p)[0]
+            dist = math.sqrt((c_c_center[0] - c_p_center[0]) ** 2 + (c_c_center[1] - c_p_center[1]) ** 2)
+            if dist < best_val:
+                best_val = dist
+                best_idx = i_c_p
+        movements[c_c] = contours_p[best_idx]
+        contours_p.pop(best_idx)
+    return movements
+
+
 i = 0
 frame_c, frame_p, frame_pp = None, None, None
+ball_candidates_prev = []
 
 while cap.isOpened():
     # load frame
@@ -81,20 +105,27 @@ while cap.isOpened():
     if contours:
         contours = sorted(contours, key=cv2.contourArea, reverse=False)
 
+        ball_candidates_prev = ball_candidates_prev or []
+        ball_candidates = [c for c in contours if 1 < cv2.contourArea(c) < 100]
+
+        matches = match_contours(ball_candidates_prev, ball_candidates)
+
         contour_sizes = [(cv2.contourArea(c), c) for c in contours]
         contour_sizes = filter(lambda x: x[0] > 1, contour_sizes)
         # plot as hist
         plt.hist([size for size, _ in contour_sizes], bins=50)
 
         print(f"Contours found: {len(contours)}")
-        cv2.drawContours(frame, contours[:2], -1, (0, 0, 255), 2)
+        cv2.drawContours(frame, ball_candidates, -1, (0, 0, 255), 1)
+        cv2.drawContours(frame, a, -1, (0, 255, 0), 2)
+
     else:
         print("No contours found")
 
     # draw stuff
     cv2.imshow("Frame", frame)
     cv2.imshow("After PreProcessing", processed)
-    # plt.show()
+    plt.show()
     if cv2.waitKey(1000 // int(fps)) & 0xFF == ord('q'):
         break
     if cv2.waitKey(1) & 0xFF == ord('n'):  # skip frames manually
