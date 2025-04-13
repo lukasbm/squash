@@ -14,6 +14,7 @@ if not cap.isOpened():
     raise Exception(f"Error opening video stream or file: {video_path}")
 # get properties
 fps = cap.get(cv2.CAP_PROP_FPS)
+print(f"source FPS: {fps}")
 
 size = (1280, 720)
 
@@ -202,17 +203,17 @@ while cap.isOpened():
 
     # find the smallest blob (ball)
     if contours:
-        print(f"Contours found: {len(contours)}")
+        # print(f"Contours found: {len(contours)}")
 
         # convert to blobs
         blobs = [Blob(c) for c in contours]
 
         # get ball and player candidates
         ball_candidates_size, player_candidates, incomplete_player_candidates = detection_candidates_from_size(blobs)
-        ball_candidates_proxmity = detection_ball_candidates_from_player_proximity(ball_candidates_size,
-                                                                                   player_candidates,
-                                                                                   incomplete_player_candidates)
-        ball_candidates_motion = detection_ball_candidates_from_motion(ball_candidates_proxmity, ball_candidates_prev)
+        ball_candidates_proximity = detection_ball_candidates_from_player_proximity(ball_candidates_size,
+                                                                                    player_candidates,
+                                                                                    incomplete_player_candidates)
+        ball_candidates_motion = detection_ball_candidates_from_motion(ball_candidates_proximity, ball_candidates_prev)
         # update previous ball candidates
         ball_candidates_prev = ball_candidates_motion
         # visualize candidates
