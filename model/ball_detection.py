@@ -16,6 +16,7 @@ if not cap.isOpened():
 fps = cap.get(cv2.CAP_PROP_FPS)
 print(f"source FPS: {fps}")
 
+# required to detect ball at the front wall!
 size = (1280, 720)
 
 
@@ -172,6 +173,77 @@ def detection_ball_candidates_from_motion(ball_candidates: List[Blob], ball_cand
         if flag:
             ball_candidates_filtered.append(c)
     return ball_candidates_filtered
+
+
+class BallTracker:
+    position = None  # (x, y) in pixel coordinates
+
+    def __init__(self):
+        self._initialized = False
+
+        # set up kalman
+        self.kalman = cv2.KalmanFilter(4, 2)
+        self.kalman.transitionMatrix = np.array([[1, 0, 1, 0],
+                                                 [0, 1, 0, 1],
+                                                 [0, 0, 1, 0],
+                                                 [0, 0, 0, 1]], np.float32)
+        self.kalman.measurementMatrix = np.array([[1, 0, 0, 0],
+                                                  [0, 1, 0, 0]], np.float32)
+        self.kalman.processNoiseCov = np.array([[1, 0, 0, 0],
+                                                [0, 1, 0, 0],
+                                                [0, 0, 1, 0],
+                                                [0, 0, 0, 1]], np.float32) * 0.09
+        self.kalman.measurementNoiseCov = np.array([[1, 0],
+                                                    [0, 1]], np.float32) * 0.0003
+
+    def _initialize(self, ball_candidates: List[Blob]):
+        # FIXME: save as np array!!
+        image_center = (size[0] // 2, size[1] // 2)
+        if len(ball_candidates) == 0:
+            # use center of image
+            self.position = image_center
+        elif len(ball_candidates) == 1:
+            # use the only candidate
+            self.position = ball_candidates[0].center
+        else:
+            # use the one closest to center
+            best_candidate = None
+            best_dist = None
+            for c in ball_candidates:
+                dist = math.sqrt((c.center[0] - image_center[0]) ** 2 + (c.center[1] - image_center[1]) ** 2)
+                if best_dist is None or dist < best_dist:
+                    best_candidate = c
+                    best_dist = dist
+            self.position = best_candidate.center
+
+    def _update(self, ball_candidates: List[Blob]):
+        if len(ball_candidates) == 0:
+            # only predict using kalman filter
+            self.position = self.kalman.predict()
+        elif len(ball_candidates) == 1:
+            # the location is assumed to be the real ball location. used to correct the Kalman filter
+            self.position = ball_candidates[0].center
+            self.kalman.correct(np.array([[np.float32(self.position[0])], [np.float32(self.position[1])]]))
+        else:  # multiple candidates
+            # use the one closest to the prediction and correct the Kalman filter
+            # TODO
+            prediction = self.kalman.predict()
+            best_candidate = None
+            best_dist = None
+            for c in ball_candidates:
+                dist = math.sqrt((c.center[0] - prediction[0]) ** 2 + (c.center[1] - prediction[1]) ** 2)
+                if best_dist is None or dist < best_dist:
+                    best_candidate = c
+                    best_dist = dist
+            self.position = best_candidate.center
+            self.kalman.correct(np.array([[np.float32(self.position[0])], [np.float32(self.position[1])]]))
+
+    def track(self, ball_candidates: List[Blob]) -> None:
+        if self._initialized:
+            self._update(ball_candidates)
+        else:
+            self._initialize(ball_candidates)
+            self._initialized = True
 
 
 i = 0
