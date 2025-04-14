@@ -71,7 +71,7 @@ def contour_center(contour) -> (int, int):
 class Blob:
     contour: np.ndarray
     area: float  # in pixel coordinates
-    center: (float, float)  # in pixel coordinates
+    center: Tuple[float, float]  # in pixel coordinates
     radius: float
 
     def __init__(self, cnt):
@@ -180,7 +180,7 @@ def detection_ball_candidates_from_motion(ball_candidates: List[Blob], ball_cand
 
 
 class BallTrackerKalman:
-    position = None  # (x, y) in pixel coordinates
+    position: Tuple[float, float] = (size[0] // 2, size[1] // 2)  # in pixel coordinates
 
     def __init__(self):
         self._initialized = False
@@ -201,7 +201,6 @@ class BallTrackerKalman:
                                                     [0, 1]], np.float32) * 0.0003
 
     def _initialize(self, ball_candidates: List[Blob]):
-        # FIXME: save as np array!!
         image_center = (size[0] // 2, size[1] // 2)
         if len(ball_candidates) == 0:
             # use center of image
@@ -223,15 +222,15 @@ class BallTrackerKalman:
     def _update(self, ball_candidates: List[Blob]):
         if len(ball_candidates) == 0:
             # only predict using kalman filter
-            self.position = self.kalman.predict()
+            prediction = self.kalman.predict().flatten()
+            self.position = (prediction[0], prediction[1])
         elif len(ball_candidates) == 1:
             # the location is assumed to be the real ball location. used to correct the Kalman filter
             self.position = ball_candidates[0].center
             self.kalman.correct(np.array([[np.float32(self.position[0])], [np.float32(self.position[1])]]))
         else:  # multiple candidates
             # use the one closest to the prediction and correct the Kalman filter
-            # TODO
-            prediction = self.kalman.predict()
+            prediction = self.kalman.predict().flatten()
             best_candidate = None
             best_dist = None
             for c in ball_candidates:
@@ -272,12 +271,13 @@ class BallTrackerHolt:
             self._initialized = True
 
 
+# global state
 i = 0
 frame_c, frame_p, frame_pp = None, None, None
 ball_candidates_prev = []
-
 tracker = BallTrackerKalman()
 
+# main work loop
 while cap.isOpened():
     # load frame
     ret, frame = cap.read()
@@ -306,8 +306,6 @@ while cap.isOpened():
 
     # find the smallest blob (ball)
     if contours:
-        # print(f"Contours found: {len(contours)}")
-
         # convert to blobs
         blobs = [Blob(c) for c in contours]
 
@@ -317,16 +315,18 @@ while cap.isOpened():
                                                                                     player_candidates,
                                                                                     incomplete_player_candidates)
         ball_candidates_motion = detection_ball_candidates_from_motion(ball_candidates_proximity, ball_candidates_prev)
+        print(f"Ball candidates: {len(ball_candidates_motion)}")
         # update previous ball candidates
         ball_candidates_prev = ball_candidates_motion  # FIXME: or update it later with the single result of the tracker?
         # visualize candidates
-        cv2.drawContours(frame, list(map(lambda x: x.contour, ball_candidates_motion)), -1, (255, 0, 0), 5)
+        # cv2.drawContours(frame, list(map(lambda x: x.contour, ball_candidates_motion)), -1, (0, 0, 255), 30)  # FIXME: does not work
+        for c in ball_candidates_motion:
+            cv2.circle(frame, (int(c.center[0]), int(c.center[1])), int(c.radius) + 2, (0, 0, 255), 3)
 
         # player tracking narrows it down to a single player candidate
         tracker.track(ball_candidates_motion)
-
         # draw the corrected position
-        cv2.circle(frame, (int(tracker.position[0]), int(tracker.position[1])), 10, (0, 255, 0), 1)
+        cv2.circle(frame, (int(tracker.position[0]), int(tracker.position[1])), 20, (0, 255, 0), 3)
 
     else:
         print("No contours found")
