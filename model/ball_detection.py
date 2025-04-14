@@ -7,6 +7,10 @@ import cv2
 import numpy as np
 from matplotlib import pyplot as plt
 
+# print(cv2.getBuildInformation())
+cv2.ocl.setUseOpenCL(True)
+print("OpenCL enabled:", cv2.ocl.useOpenCL())
+
 # load video
 video_path = os.path.join(os.getcwd(), "..", "videos", "casse_lukas_1_cut.mp4")
 cap = cv2.VideoCapture(video_path)
@@ -175,7 +179,7 @@ def detection_ball_candidates_from_motion(ball_candidates: List[Blob], ball_cand
     return ball_candidates_filtered
 
 
-class BallTracker:
+class BallTrackerKalman:
     position = None  # (x, y) in pixel coordinates
 
     def __init__(self):
@@ -246,9 +250,33 @@ class BallTracker:
             self._initialized = True
 
 
+class BallTrackerHolt:
+    """
+    using holt's double exponential smoothing
+    """
+
+    def __init__(self):
+        self._initialized = False
+
+    def _initialize(self, ball_candidates: List[Blob]):
+        pass
+
+    def _update(self, ball_candidates: List[Blob]):
+        pass
+
+    def track(self, ball_candidates: List[Blob]) -> None:
+        if self._initialized:
+            self._update(ball_candidates)
+        else:
+            self._initialize(ball_candidates)
+            self._initialized = True
+
+
 i = 0
 frame_c, frame_p, frame_pp = None, None, None
 ball_candidates_prev = []
+
+tracker = BallTrackerKalman()
 
 while cap.isOpened():
     # load frame
@@ -260,10 +288,13 @@ while cap.isOpened():
     # fix size
     frame = cv2.resize(frame, size)
 
+    # move to gpu
+    frame_gpu = cv2.UMat(frame)
+
     # assign
     frame_pp = frame_p
     frame_p = frame_c
-    frame_c = frame.copy()
+    frame_c = frame_gpu
     if i < 3:
         continue
 
@@ -287,13 +318,15 @@ while cap.isOpened():
                                                                                     incomplete_player_candidates)
         ball_candidates_motion = detection_ball_candidates_from_motion(ball_candidates_proximity, ball_candidates_prev)
         # update previous ball candidates
-        ball_candidates_prev = ball_candidates_motion
+        ball_candidates_prev = ball_candidates_motion  # FIXME: or update it later with the single result of the tracker?
         # visualize candidates
         cv2.drawContours(frame, list(map(lambda x: x.contour, ball_candidates_motion)), -1, (255, 0, 0), 5)
 
         # player tracking narrows it down to a single player candidate
+        tracker.track(ball_candidates_motion)
 
-
+        # draw the corrected position
+        cv2.circle(frame, (int(tracker.position[0]), int(tracker.position[1])), 10, (0, 255, 0), 1)
 
     else:
         print("No contours found")
@@ -301,10 +334,8 @@ while cap.isOpened():
     # draw stuff
     cv2.imshow("Frame", frame)
     cv2.imshow("After PreProcessing", processed)
-    if cv2.waitKey(1000 // int(fps)) & 0xFF == ord('q'):
+    if cv2.waitKey(1) & 0xFF == ord('q'):
         break
-    if cv2.waitKey(1) & 0xFF == ord('n'):  # skip frames manually
-        continue
 
 cap.release()
 cv2.destroyAllWindows()
