@@ -5,7 +5,6 @@ from typing import List, Tuple
 
 import cv2
 import numpy as np
-from matplotlib import pyplot as plt
 
 # print(cv2.getBuildInformation())
 cv2.ocl.setUseOpenCL(True)
@@ -21,7 +20,7 @@ fps = cap.get(cv2.CAP_PROP_FPS)
 print(f"source FPS: {fps}")
 
 # required to detect ball at the front wall!
-size = (1280, 720)
+size = (1024, 576)
 
 
 def preprocessing(frame1, frame2, frame3):
@@ -82,6 +81,10 @@ class Blob:
 
     def dist_to(self, other):
         return math.sqrt((self.center[0] - other.center[0]) ** 2 + (self.center[1] - other.center[1]) ** 2)
+
+    @property
+    def center_np(self):
+        return np.array(self.center, dtype=np.float32)
 
 
 # from sachdeva 2019
@@ -180,7 +183,7 @@ def detection_ball_candidates_from_motion(ball_candidates: List[Blob], ball_cand
 
 
 class BallTrackerKalman:
-    position: Tuple[float, float] = (size[0] // 2, size[1] // 2)  # in pixel coordinates
+    position: Tuple[float, float] = (size[0] / 2, size[1] / 2)  # in pixel coordinates
 
     def __init__(self):
         self._initialized = False
@@ -210,7 +213,7 @@ class BallTrackerKalman:
     def _update(self, ball_candidates: List[Blob]):
         if len(ball_candidates) == 0:
             # only predict using kalman filter
-            prediction = self.kalman.predict().flatten()
+            prediction = self.kalman.predict().flatten().tolist()
             self.position = (prediction[0], prediction[1])
         elif len(ball_candidates) == 1:
             # the location is assumed to be the real ball location. used to correct the Kalman filter
@@ -241,55 +244,58 @@ class BallTrackerHolt:
     """
     using holt's double exponential smoothing
     """
-    level = np.array([np.float32(size[0] // 2), np.float32(size[1] // 2)])
-    trend: np.ndarray = np.zeros((2, 1))  # in pixel coordinates
+    level: np.ndarray = np.array([np.float32(size[0] // 2), np.float32(size[1] // 2)])  # in pixel coordinates
+    trend: np.ndarray = np.array([np.float32(0), np.float32(0)])  # in pixel coordinates
+
+    position: Tuple[float, float] = (size[0] / 2, size[1] / 2)  # in pixel coordinates
 
     def __init__(self, alpha: float = 0.9, beta: float = 0.1):
         """
         :param alpha: (level smoothing) controls how closely you follow recent observations (higher αα → more weight on new data).
-        :param beta: (trend smoothing) controls how quickly you change the trend (higher ββ → shorter trend memory).
+        :param beta: (trend smoothing) controls how quickly you change the trend (higher β → shorter trend memory).
         """
         self._initialized = False
         self.alpha = alpha
         self.beta = beta
 
-    def _predict(self):
-        return self.level + self.trend
+    def _predict(self, m: int = 1) -> np.ndarray:
+        return self.level + m * self.trend
 
-    def _update(self):
+    def _update(self, ball_candidate: Blob):
         # Holt's double exponential smoothing
-        self.level = self.alpha * self.level + (1 - self.alpha) * (self.level + self.trend)
-        self.trend = self.beta * (self.level - self.level) + (1 - self.beta) * self.trend
+        prev_level = self.level
+        next_level = self.alpha * ball_candidate.center_np + (1 - self.alpha) * (self.level + self.trend)
+        next_trend = self.beta * (next_level - prev_level) + (1 - self.beta) * self.trend
+        return next_level, next_trend
 
     def track(self, ball_candidates: List[Blob]) -> None:
         if len(ball_candidates) == 0:
             # only predict
-            self.level = self._predict()
+            self.position = self._predict().flatten().tolist()
             # maybe update the level based on the prediction?
+            # self.level = self.position.flatten().tolist()  # FIXME: turn off?
         elif len(ball_candidates) == 1:
-            pass
+            self.level, self.trend = self._update(ball_candidates[0])
+            self.position = self.level.flatten().tolist()
         else:
             # use the one closest to the prediction and correct the Kalman filter
             prediction = self._predict()
             best_candidate = None
             best_dist = None
             for c in ball_candidates:
-                dist = math.sqrt((c.center[0] - prediction[0]) ** 2 + (c.center[1] - prediction[1]) ** 2)
+                dist = np.linalg.norm(c.center_np - prediction)
                 if best_dist is None or dist < best_dist:
                     best_candidate = c
                     best_dist = dist
-            self.level = best_candidate.center
-
-    @property
-    def position(self) -> Tuple[float, float]:
-        return self.level.flatten().tolist()
+            self.level = best_candidate.center_np
+            self.position = best_candidate.center
 
 
 # global state
 i = 0
 frame_c, frame_p, frame_pp = None, None, None
 ball_candidates_prev = []
-tracker = BallTrackerKalman()
+tracker = BallTrackerHolt()  # BallTrackerKalman()
 
 # main work loop
 while cap.isOpened():
