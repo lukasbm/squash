@@ -187,18 +187,6 @@ class BallTrackerKalman:
 
         # set up kalman
         self.kalman = cv2.KalmanFilter(4, 2)
-        self.kalman.transitionMatrix = np.array([[1, 0, 1, 0],
-                                                 [0, 1, 0, 1],
-                                                 [0, 0, 1, 0],
-                                                 [0, 0, 0, 1]], np.float32)
-        self.kalman.measurementMatrix = np.array([[1, 0, 0, 0],
-                                                  [0, 1, 0, 0]], np.float32)
-        self.kalman.processNoiseCov = np.array([[1, 0, 0, 0],
-                                                [0, 1, 0, 0],
-                                                [0, 0, 1, 0],
-                                                [0, 0, 0, 1]], np.float32) * 0.09
-        self.kalman.measurementNoiseCov = np.array([[1, 0],
-                                                    [0, 1]], np.float32) * 0.0003
 
     def _initialize(self, ball_candidates: List[Blob]):
         image_center = (size[0] // 2, size[1] // 2)
@@ -253,22 +241,48 @@ class BallTrackerHolt:
     """
     using holt's double exponential smoothing
     """
+    level = np.array([np.float32(size[0] // 2), np.float32(size[1] // 2)])
+    trend: np.ndarray = np.zeros((2, 1))  # in pixel coordinates
 
-    def __init__(self):
+    def __init__(self, alpha: float = 0.9, beta: float = 0.1):
+        """
+        :param alpha: (level smoothing) controls how closely you follow recent observations (higher αα → more weight on new data).
+        :param beta: (trend smoothing) controls how quickly you change the trend (higher ββ → shorter trend memory).
+        """
         self._initialized = False
+        self.alpha = alpha
+        self.beta = beta
 
-    def _initialize(self, ball_candidates: List[Blob]):
-        pass
+    def _predict(self):
+        return self.level + self.trend
 
-    def _update(self, ball_candidates: List[Blob]):
-        pass
+    def _update(self):
+        # Holt's double exponential smoothing
+        self.level = self.alpha * self.level + (1 - self.alpha) * (self.level + self.trend)
+        self.trend = self.beta * (self.level - self.level) + (1 - self.beta) * self.trend
 
     def track(self, ball_candidates: List[Blob]) -> None:
-        if self._initialized:
-            self._update(ball_candidates)
+        if len(ball_candidates) == 0:
+            # only predict
+            self.level = self._predict()
+            # maybe update the level based on the prediction?
+        elif len(ball_candidates) == 1:
+            pass
         else:
-            self._initialize(ball_candidates)
-            self._initialized = True
+            # use the one closest to the prediction and correct the Kalman filter
+            prediction = self._predict()
+            best_candidate = None
+            best_dist = None
+            for c in ball_candidates:
+                dist = math.sqrt((c.center[0] - prediction[0]) ** 2 + (c.center[1] - prediction[1]) ** 2)
+                if best_dist is None or dist < best_dist:
+                    best_candidate = c
+                    best_dist = dist
+            self.level = best_candidate.center
+
+    @property
+    def position(self) -> Tuple[float, float]:
+        return self.level.flatten().tolist()
 
 
 # global state
