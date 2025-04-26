@@ -1,5 +1,3 @@
-import org.jetbrains.kotlin.config.JvmTarget
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -34,13 +32,14 @@ android {
         targetCompatibility = JavaVersion.VERSION_1_8
     }
     kotlinOptions {
-        jvmTarget = JvmTarget.JVM_1_8.toString()
+        jvmTarget = "1.8"
     }
     buildFeatures {
         compose = true
         viewBinding = true
     }
 }
+
 dependencies {
     // cameraX
     implementation(libs.androidx.camera.core)
@@ -52,6 +51,9 @@ dependencies {
 
     // permission manager
     implementation(libs.accompanist.permissions)
+
+    // openCV
+    implementation(libs.opencv)
 
     // default libs
     implementation(libs.androidx.core.ktx)

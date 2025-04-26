@@ -3,7 +3,6 @@ import os
 import cv2
 import numpy as np
 
-
 # https://www.worldsquash.org/wp-content/uploads/2021/08/171128_Court-Specifications.pdf
 # Dimensions of an International Doubles Squash Court
 class Court:
