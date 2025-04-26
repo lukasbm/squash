@@ -19,10 +19,9 @@ class MainActivity : ComponentActivity() {
             Log.i(TAG, "OpenCV loaded successfully");
         } else {
             Log.e(TAG, "OpenCV initialization failed!");
-            (Toast.makeText(this, "OpenCV initialization failed!", Toast.LENGTH_LONG)).show();
+            Toast.makeText(this, "OpenCV initialization failed!", Toast.LENGTH_LONG).show();
             return;
         }
-
 
         enableEdgeToEdge()
         setContent {
