@@ -1,4 +1,4 @@
-package name.lbo.squashtracker
+package name.lbo.squashtracker.model
 
 import org.opencv.core.Core
 import org.opencv.core.CvType
@@ -32,6 +32,12 @@ object Detector {
     private val frameDifferences = CircularBuffer<Mat>(2);
     private val dilationKernel = Mat(3, 3, CvType.CV_8U)
 
+    // instance vars to avoid reallocation
+    private val newestDiff = Mat()
+    private val combined = Mat()
+    private val thresholded = Mat()
+    private val dilated = Mat()
+
     fun isReady(): Boolean {
         return buffer.isFull()
     }
@@ -47,22 +53,19 @@ object Detector {
         :param frame: A video frame
         :return: A binary image that has differentiated moving parts of the image from static parts.
          */
-        buffer.add(src.clone())
-        if (!buffer.isFull()) {
+        buffer.add(src)
+        if (!isReady()) {
             return
         }
 
         // form new diff
-        val newestDiff = Mat()  // TODO: make this a instance var, to save memory! otherwise it will be re-allocated every frame!
         Core.absdiff(buffer[0], buffer[1], newestDiff)
         frameDifferences.add(newestDiff)
 
         // combine it with the previous diff
-        val combined = Mat()
         Core.bitwise_and(frameDifferences[0], frameDifferences[1], combined)
 
         // threshold
-        val thresholded = Mat()
         val ret = Imgproc.threshold(
             combined,
             thresholded,
@@ -91,7 +94,6 @@ object Detector {
         iterations: Int,
     ) {
         // dilation followed by erosion
-        val dilated = Mat()
         Imgproc.dilate(src, dilated, dilationKernel, Point(-1.0, -1.0), iterations)
         Imgproc.erode(dilated, dst, dilationKernel)
     }

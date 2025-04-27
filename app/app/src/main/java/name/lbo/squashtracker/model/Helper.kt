@@ -1,6 +1,8 @@
-package name.lbo.squashtracker
+package name.lbo.squashtracker.model
 
-import org.opencv.core.Rect
+import org.opencv.core.Point
+import kotlin.math.pow
+import kotlin.math.sqrt
 
 // TODO: to squeeze out even more performance, Mat should be passed by reference, and reused.
 
@@ -51,5 +53,22 @@ class CircularBuffer<T>(private val maxSize: Int) {
     fun getSize(): Int = size
 
     fun isFull(): Boolean = size == maxSize
+
+    fun getLast(): T {
+        require(size > 0) { "Buffer is empty" }
+        @Suppress("UNCHECKED_CAST")
+        return buffer[(start + size - 1) % maxSize] as T
+    }
 }
 
+fun Point.add(other: Point): Point {
+    return Point(this.x + other.x, this.y + other.y)
+}
+
+fun Point.subtract(other: Point): Point {
+    return Point(this.x - other.x, this.y - other.y)
+}
+
+fun Point.distanceTo(other: Point): Double {
+    return sqrt((this.x - other.x).pow(2.0) + (this.y - other.y).pow(2.0))
+}
