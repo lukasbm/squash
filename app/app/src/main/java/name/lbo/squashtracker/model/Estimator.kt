@@ -1,35 +1,62 @@
 package name.lbo.squashtracker.model
 
+import org.opencv.core.Point
 import org.opencv.core.Rect
 
 interface Estimator {
     fun correct(position: Rect)
     fun predict(): Rect
-
 }
 
-object DoubleExponentialEstimator : Estimator {
-    private const val DATA_SMOOTHING = 0.9f
-    private const val TREND_SMOOTHING = 0.25f
+class DoubleExponentialEstimator(initialPos: Rect = Rect(), nextPos: Rect = Rect()) : Estimator {
+    companion object {
+        private const val DATA_SMOOTHING = 0.9
+        private const val TREND_SMOOTHING = 0.25
+    }
 
-    private var lastPosition = Rect()
-    p
+    // FIXME: clean this up without using circular buffer!
+    private val positionBuffer = CircularBuffer<Rect>(2)
+    private var previousSmoothed: Point
+    private var previousTrend: Point
 
+    init {
+        positionBuffer.add(initialPos)
+        positionBuffer.add(nextPos)
+        previousSmoothed = positionBuffer[0].tl()
+        previousTrend = positionBuffer[1].tl().subtract(positionBuffer[0].tl())
+    }
 
-    fun correct(position: Rect) {
-        lastPosition = position
+    override fun correct(position: Rect) {
+        positionBuffer.add(position)
     }
 
     // predicts a rectangle
-    fun predict(): Rect {
+    override fun predict(): Rect {
+        val prev = positionBuffer.getLast()
+
         val smoothedX = smoothedValue(
-            lastPosition.x.toFloat(),
-            lastPosition.x.toFloat(),
-            lastTrend
+            prev.x.toDouble(), previousSmoothed.x, previousTrend.x
+        )
+        val smoothedY = smoothedValue(
+            prev.y.toDouble(), previousSmoothed.y, previousTrend.y
         )
 
+        val trendX = calculateTrendEstimate(
+            smoothedX, previousSmoothed.x, previousTrend.x
+        )
+        val trendY = calculateTrendEstimate(
+            smoothedY, previousSmoothed.y, previousTrend.y
+        )
+
+        val predictionX = smoothedX + trendX
+        val predictionY = smoothedY + trendY
+
+        // Update the smoothed and trend values for the next prediction
+        previousSmoothed = Point(predictionX, predictionY)
+        previousTrend = Point(trendX, trendY)
+
         return Rect(
-            predictionX - 1, predictionY - 1, lastPosition.width + 2, lastPosition.height + 2
+            predictionX.toInt() - 1, predictionY.toInt() - 1, prev.width + 2, prev.height + 2
         )
     }
 
@@ -43,7 +70,9 @@ object DoubleExponentialEstimator : Estimator {
      * @param prevTrend: Trend value from previous time-step.
      * @return: Smoothed estimate of top-left corner of bounding rectangle.
      */
-    private fun smoothedValue(observedTrue: Float, prevSmoothed: Float, prevTrend: Float): Float {
+    private fun smoothedValue(
+        observedTrue: Double, prevSmoothed: Double, prevTrend: Double
+    ): Double {
         return DATA_SMOOTHING * observedTrue + (1 - DATA_SMOOTHING) * (prevSmoothed + prevTrend)
     }
 
@@ -56,10 +85,8 @@ object DoubleExponentialEstimator : Estimator {
     :return: New smoothed value.
      */
     private fun calculateTrendEstimate(
-        currSmoothed: Float,
-        prevSmoothed: Float,
-        prevTrend: Float
-    ): Float {
+        currSmoothed: Double, prevSmoothed: Double, prevTrend: Double
+    ): Double {
         return TREND_SMOOTHING * (currSmoothed - prevSmoothed) + (1 - TREND_SMOOTHING) * prevTrend
     }
 }

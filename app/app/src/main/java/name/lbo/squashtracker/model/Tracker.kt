@@ -44,25 +44,25 @@ object Tracker {
     // finds the most probable candidate by looking at the path of the candidates
     // @param pairs: For each pair of subsequent frames a bag of pairs (connections)
     private fun findShortestPathCandidate(pairs: Collection<Collection<Pair<Rect, Rect>>>): Rect {
-
+        return Rect() // TODO
     }
 
     // @param pairs: (from, to) highlighting connections of rects between subsequent frames.
     private fun addParisToGraph(pairs: Collection<Pair<Rect, Rect>>) {
         pairs.forEach { (from, to) ->
             val dist = from.tl().distanceTo(to.tl())
-            if pathGraph.containsKey(from) {
-                pathGraph.computeIfPresent(to) { key, value ->
-                    PathElement(
-                        from,
-                        to,
-                        value.distance + dist,
-                        value.hops + 1
-                    )
-                }
-            } else {
-
-            }
+//            if pathGraph.containsKey(from) {
+//                pathGraph.computeIfPresent(to) { key, value ->
+//                    PathElement(
+//                        from,
+//                        to,
+//                        value.distance + dist,
+//                        value.hops + 1
+//                    )
+//                }
+//            } else {
+//
+//            }
         }
     }
 
